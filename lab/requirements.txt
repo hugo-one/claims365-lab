@@ -1,0 +1,21 @@
+# Claims 365 lab - PINNED versions.
+#
+# Do not float these. The Agent Framework is moving quickly and the gpt-5 parameters are
+# version-sensitive, so an unpinned install can behave differently from the one these labs were
+# written against. Tested on Python 3.12 and 3.13.
+#
+# For the exact tested set, install lab/requirements.lock.txt instead - that is what the Codespace
+# uses.
+agent-framework==1.12.1
+openai==2.51.0
+azure-identity>=1.19,<2
+pillow>=10,<12
+python-dotenv>=1.0,<2
+# Observability, Module 2 Part 6 / Step 8. m2_observability.py imports opentelemetry.sdk
+# UNCONDITIONALLY, so an image built without this fails that part with ModuleNotFoundError.
+# It currently arrives as an undeclared transitive dependency of agent-framework; pin it directly
+# so a packaging change upstream cannot quietly break the lab.
+opentelemetry-sdk>=1.39,<2
+azure-monitor-opentelemetry>=1.6,<2
+# Optional (only if demonstrating the built-in evaluators gotcha; the lab uses a custom judge instead):
+# azure-ai-evaluation==1.18.3

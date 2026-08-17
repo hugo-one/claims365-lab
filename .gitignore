@@ -1,0 +1,18 @@
+# Your credentials - never commit
+lab/.env
+*.env
+!*.env.sample
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editor settings; postCreate.sh writes .vscode/settings.json into every container
+.vscode/
+
+# Lab run output, per attendee - checkpoints and the Dataverse session. Never commit these.
+.m3_token.json
+Course/Module3/code/python/_checkpoints/
+Course/Module3/code/dotnet/FraudDesk/bin/
+Course/Module3/code/dotnet/FraudDesk/obj/

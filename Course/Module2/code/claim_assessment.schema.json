@@ -1,0 +1,151 @@
+{
+  "name": "claim_assessment",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "claim_reference",
+      "damage",
+      "document",
+      "consistency",
+      "estimated_cost_band",
+      "fraud_suspected",
+      "fraud_indicators",
+      "confidence",
+      "routing",
+      "rationale"
+    ],
+    "properties": {
+      "claim_reference": {
+        "type": "string"
+      },
+      "damage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "category",
+          "description",
+          "severity",
+          "extent"
+        ],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "motor",
+              "home",
+              "travel",
+              "unclear"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "cosmetic",
+              "minor",
+              "moderate",
+              "severe"
+            ]
+          },
+          "extent": {
+            "type": "string",
+            "description": "What area or how much is affected"
+          }
+        }
+      },
+      "document": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "supplier",
+          "total_claimed_gbp",
+          "notable_line_items"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "supplier": {
+            "type": "string"
+          },
+          "total_claimed_gbp": {
+            "type": "number"
+          },
+          "notable_line_items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "consistency": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "verdict",
+          "reasons"
+        ],
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "consistent",
+              "questionable",
+              "inconsistent"
+            ],
+            "description": "Does the document match what the photograph shows?"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "estimated_cost_band": {
+        "type": "string",
+        "enum": [
+          "under_500",
+          "500_to_2000",
+          "2000_to_10000",
+          "over_10000",
+          "cannot_estimate"
+        ],
+        "description": "Your own estimate from the photograph, independent of the document"
+      },
+      "fraud_suspected": {
+        "type": "boolean",
+        "description": "True only if you have a specific, evidenced concern. False otherwise."
+      },
+      "fraud_indicators": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Specific concerns only, each one a thing you can point at in the evidence. Return an EMPTY array when there are none. Never add a sentence saying that there are no concerns - that is what fraud_suspected=false means."
+      },
+      "confidence": {
+        "type": "number",
+        "description": "0.0 to 1.0"
+      },
+      "routing": {
+        "type": "string",
+        "enum": [
+          "straight_through",
+          "handler_review",
+          "complex_claims_desk"
+        ]
+      },
+      "rationale": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,0 +1,84 @@
+name: Verify lab environment
+
+# Proves the lab installs and runs on LINUX, which is the platform the Codespace uses.
+#
+# A lock file frozen on Windows can contain Windows-only packages that cannot install on Linux, and
+# the failure is quiet: the Codespace still opens, and every lab script then fails on its first
+# import. Installing on Linux here is the check that catches that before anyone hits it.
+#
+# No credentials, no model calls, no cost: m3_test.py is entirely offline, and m3_probe_agent.py
+# skips itself (exit 0) when lab/.env holds no key - which in CI is always.
+
+on:
+  push:
+    paths:
+      - 'lab/requirements*.txt'
+      - 'lab/verify_env.py'
+      - '.devcontainer/**'
+      - 'Course/Module3/code/**'
+      - '.github/workflows/verify-lab-env.yml'
+  workflow_dispatch:
+
+jobs:
+  linux-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Python 3.13 (the version the devcontainer ships)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install the pinned lock, exactly as postCreate.sh does
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r lab/requirements.lock.txt
+
+      - name: Every package the labs import is importable
+        run: python lab/verify_env.py
+
+      - name: Module 3 test suite (offline, no credentials)
+        run: |
+          cd Course/Module3/code/python
+          python m3_test.py
+
+      # The probe makes live model calls when a key is present, so in CI the pass is that it
+      # imports cleanly (the API-drift canary) and then declines to run, rather than crashing.
+      - name: Module 3 probe imports and skips cleanly without credentials
+        run: |
+          cd Course/Module3/code/python
+          python m3_probe_agent.py | grep -q "PROBE SKIPPED" || exit 1
+
+      # The setup steps are described in .env.sample, in postCreate.sh and in the guides. Nothing
+      # tests prose, so those three can disagree without anyone noticing - and the first thing you
+      # read in a new Codespace would then contradict the guide you are working from. This keeps
+      # them in step.
+      - name: Setup instructions agree with .env.sample
+        run: |
+          python - <<'EOF'
+          sample = open('lab/.env.sample', encoding='utf-8').read()
+          post = open('.devcontainer/postCreate.sh', encoding='utf-8').read()
+          readme = open('README.md', encoding='utf-8').read()
+          for key in ('FOUNDRY_OPENAI_V1', 'MODEL_DEPLOYMENT',
+                      'DATAVERSE_TENANT', 'DATAVERSE_ORG'):
+              assert f'{key}=' in sample, f'{key} should ship pre-filled in .env.sample'
+              assert f'Fill in {key}' not in post, \
+                  f'postCreate.sh still asks the attendee to fill in {key}'
+          assert 'FOUNDRY_KEY' in post, 'postCreate.sh should still name the one value they paste'
+          assert 'FOUNDRY_KEY' in readme, 'README should name the one value they paste'
+          # The key is given out at the start of Module 3, never emailed. This phrase is how the
+          # story drifted once already.
+          for name, text in (('README.md', readme), ('postCreate.sh', post),
+                             ('.env.sample', sample)):
+              assert 'joining email' not in text, \
+                  f'{name} says a Foundry value comes by email; it is given out on the day'
+          print('setup instructions agree with .env.sample')
+          EOF
+
+      - name: The schema attendees paste is valid JSON
+        run: |
+          python -c "import json,sys; d=json.load(open('Course/Module2/code/claim_assessment.schema.json')); \
+          assert d['strict'] is True, 'strict must be true'; \
+          assert len(d['schema']['properties'])==10, 'expected 10 properties'; \
+          print('claim_assessment.schema.json OK -', len(d['schema']['properties']), 'properties')"

@@ -1,0 +1,35 @@
+{
+  "name": "Claims 365 Lab (Foundry + Agent Framework)",
+  "image": "mcr.microsoft.com/devcontainers/python:3.13-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/dotnet:2": { "version": "8.0" },
+    "ghcr.io/devcontainers/features/node:1": { "version": "lts" }
+  },
+  "postCreateCommand": "bash .devcontainer/postCreate.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-azurecli",
+        "ms-dotnettools.csdevkit"
+      ],
+      "settings": {
+        // postCreate.sh installs with `python`, which in this image is /usr/local/bin/python.
+        // Without this, VS Code's Run button can pick Debian's /usr/bin/python3 instead - a
+        // different interpreter with none of the lab packages - and every script dies with
+        // "ModuleNotFoundError: No module named 'agent_framework'". postCreate.sh also writes
+        // the DETECTED path into .vscode/settings.json, which overrides this if the image moves.
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.terminal.activateEnvInCurrentTerminal": true
+      }
+    }
+  },
+  "containerEnv": {
+    "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+    "PYTHONUTF8": "1",
+    "PYTHONIOENCODING": "utf-8"
+  }
+}
