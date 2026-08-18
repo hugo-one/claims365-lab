@@ -265,11 +265,16 @@ JUDGEMENT_SCHEMA = {
 def _client() -> OpenAIChatClient:
     """A chat client for the Foundry deployment, configured from `lab/.env`.
 
-    `base_url` rather than an Azure-style endpoint: gpt-5-mini rejects dated `api_version` values,
-    so the OpenAI-compatible `/openai/v1/` route is the one that works.
+    The credential is your own sign-in unless a FOUNDRY_KEY is set: the session that reads the
+    book also pays for the model calls, so one `m3_login.py` covers everything and there is no
+    shared key to hand around. `base_url` rather than an Azure-style endpoint: gpt-5-mini rejects
+    dated `api_version` values, so the OpenAI-compatible `/openai/v1/` route is the one that
+    works - and it sends this credential as a bearer token, which is why a key and an Entra token
+    are interchangeable in the same slot.
     """
     cfg = m3_env.foundry()
-    return OpenAIChatClient(model=cfg["MODEL_DEPLOYMENT"], api_key=cfg["FOUNDRY_KEY"],
+    return OpenAIChatClient(model=cfg["MODEL_DEPLOYMENT"],
+                            api_key=cfg["FOUNDRY_KEY"] or dv.foundry_token(),
                             base_url=cfg["FOUNDRY_OPENAI_V1"])
 
 
@@ -398,9 +403,9 @@ class Challenge(Executor):
                      ctx: WorkflowContext[ReferralProposal]) -> None:
         """Argue against the traversal, keep what survives, then price it in Python.
 
-        The traversal reaches nine. Six are the ring; three share only a postcode. A separate agent
-        rather than a second prompt to the same one: this one never saw the traversal happen, so it
-        cannot defend a choice it made itself.
+        The traversal casts a wide net, and some of what it catches is coincidence. A separate
+        agent rather than a second prompt to the same one: this one never saw the traversal
+        happen, so it cannot defend a choice it made itself.
         """
         listing = "\n".join(
             f"  {c.claimant_ref}  {c.full_name}  linked by {c.link_type}: {c.why_linked}"

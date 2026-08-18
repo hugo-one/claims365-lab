@@ -2,8 +2,10 @@
 
 DEMONSTRATION CODE - part of the Claims 365 training lab, written to be read rather than deployed.
 
-Only `FOUNDRY_KEY` is a secret. The endpoint, model, tenant and Dataverse org say *where* things
-live and grant nothing on their own, so they ship pre-filled and you paste one value.
+Nothing here needs filling in. The endpoint, model, tenant and Dataverse org say *where* things
+live and grant nothing on their own, so they ship pre-filled - and model calls are keyless by
+default, paid for by the same sign-in that reads the claims book. `FOUNDRY_KEY` is an optional
+override; see `foundry()`.
 """
 import os
 from pathlib import Path
@@ -52,19 +54,25 @@ def dataverse_target() -> tuple[str, str]:
         setting("DATAVERSE_ORG", DEFAULT_ORG).rstrip("/")
 
 
-REQUIRED_FOUNDRY = ("FOUNDRY_OPENAI_V1", "FOUNDRY_KEY", "MODEL_DEPLOYMENT")
+REQUIRED_FOUNDRY = ("FOUNDRY_OPENAI_V1", "MODEL_DEPLOYMENT")
 
 
 def foundry() -> dict:
-    """The Foundry endpoint, key and deployment. Raises if any is missing.
+    """The Foundry endpoint and deployment, plus `FOUNDRY_KEY` when a real one is set.
 
-    No default for a key: guessing turns an unfinished setup step into an unexplained 401 later.
+    `FOUNDRY_KEY` is optional and normally empty: with no key, the desk redeems your Module 3
+    sign-in for a model-call token instead (`m3_dataverse.foundry_token`), so there is nothing
+    to be handed out and nothing shared. A real value here - your own resource's key, or a token
+    you minted yourself - overrides that, which is how the lab runs against a different tenant.
+    The sample's `<placeholder>` counts as unset, so an untouched lab/.env is keyless.
     """
     missing = [n for n in REQUIRED_FOUNDRY if not setting(n)]
     if missing:
         raise SystemExit(
             "lab/.env is missing " + ", ".join(missing) + ".\n"
             "  From the repository root:  cp lab/.env.sample lab/.env\n"
-            "  then paste the FOUNDRY_KEY your instructor gives out at the start of Module 3. "
-            "Everything else is already filled in.")
-    return {n: setting(n) for n in REQUIRED_FOUNDRY}
+            "  The sample ships with everything pre-filled for the course environment.")
+    key = setting("FOUNDRY_KEY")
+    if "<" in key:
+        key = ""
+    return {**{n: setting(n) for n in REQUIRED_FOUNDRY}, "FOUNDRY_KEY": key}

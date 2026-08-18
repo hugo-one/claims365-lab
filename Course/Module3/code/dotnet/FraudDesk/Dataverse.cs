@@ -34,7 +34,9 @@ public static class Dataverse
     static readonly string CachePath =
         Path.Combine(AppContext.BaseDirectory, ".m3_token.json");
 
-    // Access token, expiry and UPN for the life of ONE process. The refresh token on disk survives.
+    // Access tokens, expiries and UPN for the life of ONE process. The refresh token on disk is
+    // what survives - and it is ONE sign-in: the Dataverse token and the model-call token below
+    // are both redeemed from it, one per audience.
     static string? _access;
     static DateTimeOffset _expires = DateTimeOffset.MinValue;
     static string _upn = "unknown";
@@ -113,18 +115,13 @@ public static class Dataverse
     }
 
     /// <summary>
-    /// A valid access token, refreshed from the cached refresh token when this process holds none.
-    ///
-    /// Also decodes it to learn who you are. The UPN stamps every referral row, which is what keeps
-    /// everyone's results apart - read from the token, so it cannot be typed wrong or borrowed.
-    ///
-    /// The claims are read WITHOUT verifying the signature: acceptable here and not in a server,
-    /// since this token just came over TLS from Entra and is being read for a name and an expiry.
-    /// Dataverse verifies it properly on every call.
+    /// Exchange the cached refresh token for an access token scoped to one resource. Shared by
+    /// <see cref="TokenAsync"/> (Dataverse) and <see cref="FoundryTokenAsync"/> (model calls):
+    /// ONE sign-in, redeemed once per audience. Entra rotates the refresh token on use, so the
+    /// rotated one is saved each time.
     /// </summary>
-    static async Task<string> TokenAsync()
+    static async Task<JsonElement> RedeemAsync(string resource)
     {
-        if (_access is not null && _expires > DateTimeOffset.UtcNow.AddMinutes(2)) return _access;
         if (!File.Exists(CachePath))
             throw new Exception("not signed in. run:  dotnet run -- login");
         var rt = JsonSerializer.Deserialize<Cache>(File.ReadAllText(CachePath))!.refresh_token;
@@ -135,9 +132,9 @@ public static class Dataverse
                 ["grant_type"] = "refresh_token",
                 ["client_id"] = ClientId,
                 ["refresh_token"] = rt,
-                ["scope"] = $"{Org}/.default offline_access",
+                ["scope"] = $"{resource}/.default offline_access",
             });
-        if (!tok.TryGetProperty("access_token", out var at))
+        if (!tok.TryGetProperty("access_token", out _))
         {
             // A dead refresh token is unrecoverable, so delete it rather than fail the same way
             // on every future command.
@@ -146,16 +143,64 @@ public static class Dataverse
         }
         if (tok.TryGetProperty("refresh_token", out var nrt))
             SaveRefreshToken(nrt.GetString()!);
-        _access = at.GetString();
-        // A JWT payload is base64URL, not base64: two characters differ and the padding is gone.
-        var parts = _access!.Split('.')[1];
+        return tok;
+    }
+
+    /// <summary>
+    /// Decode a JWT payload WITHOUT verifying the signature - acceptable here and not in a
+    /// server: the token just came over TLS from Entra and is read for a name and an expiry,
+    /// not to make an access decision. The receiving service verifies it on every call.
+    /// A JWT payload is base64URL, not base64: two characters differ and the padding is gone.
+    /// </summary>
+    static JsonElement JwtClaims(string jwt)
+    {
+        var parts = jwt.Split('.')[1];
         var pad = parts.PadRight(parts.Length + (4 - parts.Length % 4) % 4, '=')
                        .Replace('-', '+').Replace('_', '/');
-        var claims = JsonDocument.Parse(Convert.FromBase64String(pad)).RootElement;
+        return JsonDocument.Parse(Convert.FromBase64String(pad)).RootElement.Clone();
+    }
+
+    /// <summary>
+    /// A valid Dataverse token, refreshed from the cached refresh token when this process holds
+    /// none. Also decodes it to learn who you are: the UPN stamps every referral row, which is
+    /// what keeps everyone's results apart - read from the token, so it cannot be typed wrong
+    /// or borrowed.
+    /// </summary>
+    static async Task<string> TokenAsync()
+    {
+        if (_access is not null && _expires > DateTimeOffset.UtcNow.AddMinutes(2)) return _access;
+        var tok = await RedeemAsync(Org);
+        _access = tok.GetProperty("access_token").GetString();
+        var claims = JwtClaims(_access!);
         _expires = DateTimeOffset.FromUnixTimeSeconds(claims.GetProperty("exp").GetInt64());
         _upn = claims.TryGetProperty("upn", out var u) ? u.GetString()!
              : claims.TryGetProperty("unique_name", out var un) ? un.GetString()! : "unknown";
         return _access!;
+    }
+
+    // The model endpoint's resource. A constant like ClientId, not config: it names Azure's
+    // Cognitive Services API surface and is the same value in every tenant.
+    const string FoundryResource = "https://cognitiveservices.azure.com";
+
+    static string? _foundryAccess;
+    static DateTimeOffset _foundryExpires = DateTimeOffset.MinValue;
+
+    /// <summary>
+    /// A model-call token from the SAME sign-in, so nobody hands you a key. The refresh token
+    /// `login` cached is redeemed once for Dataverse and once for the model endpoint: model
+    /// calls are authorised - and attributable - as you, exactly like the data reads. A real
+    /// FOUNDRY_KEY in lab/.env overrides this (see <see cref="Env.Foundry"/>), which is also
+    /// the route for running the lab against your own tenant.
+    /// </summary>
+    public static async Task<string> FoundryTokenAsync()
+    {
+        if (_foundryAccess is not null && _foundryExpires > DateTimeOffset.UtcNow.AddMinutes(2))
+            return _foundryAccess;
+        var tok = await RedeemAsync(FoundryResource);
+        _foundryAccess = tok.GetProperty("access_token").GetString();
+        _foundryExpires = DateTimeOffset.FromUnixTimeSeconds(
+            JwtClaims(_foundryAccess!).GetProperty("exp").GetInt64());
+        return _foundryAccess!;
     }
 
     /// <summary>Your UPN, as Dataverse sees you. Signs in first if this process has not yet.</summary>

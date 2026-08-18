@@ -38,7 +38,9 @@ API = f"{DATAVERSE}/api/data/v9.2"
 # Beside this file rather than in a home directory, so deleting the repo deletes the session.
 TOKEN_CACHE = Path(__file__).resolve().parent / ".m3_token.json"
 
-# Access token and expiry for the life of ONE process. The refresh token on disk is what survives.
+# Access tokens and expiries for the life of ONE process. The refresh token on disk is what
+# survives - and it is ONE sign-in: the Dataverse token and the model-call token below are both
+# redeemed from it, one per audience.
 _mem: dict = {}
 
 
@@ -110,35 +112,69 @@ def device_login() -> str:
     raise SystemExit("sign-in timed out")
 
 
-def token() -> str:
-    """A valid access token, refreshed from disk when this process holds none.
+def _redeem(resource: str) -> dict:
+    """Exchange the cached refresh token for an access token scoped to `resource`.
 
-    Also decodes it to learn who you are. The UPN stamps every referral row, which is what keeps
-    everyone's results apart - reading it from the token means it cannot be typed wrong or borrowed.
+    Shared by `token` (Dataverse) and `foundry_token` (model calls): ONE sign-in, redeemed once
+    per audience. Entra rotates the refresh token on use, so the rotated one is saved each time.
     """
-    if "tok" in _mem and _mem["exp"] - 120 > time.time():
-        return _mem["tok"]
     if not TOKEN_CACHE.exists():
         raise SystemExit("not signed in. run:  python m3_login.py")
     rt = json.loads(TOKEN_CACHE.read_text(encoding="utf-8"))["refresh_token"]
     s, tok = _post_form(
         f"https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/token",
         {"grant_type": "refresh_token", "client_id": CLIENT_ID, "refresh_token": rt,
-         "scope": f"{DATAVERSE}/.default offline_access"})
+         "scope": f"{resource}/.default offline_access"})
     if s != 200:
         # A dead refresh token is unrecoverable, so delete it rather than fail the same way forever.
         TOKEN_CACHE.unlink(missing_ok=True)
         raise SystemExit("session expired. run:  python m3_login.py")
     if tok.get("refresh_token"):
         _save_refresh_token(tok["refresh_token"])
-    # Read the claims WITHOUT verifying the signature - acceptable here, and not in a server. This
-    # token just came over TLS from Entra and is being read for a name and an expiry, not to make an
-    # access decision. Dataverse verifies it properly on every call.
-    payload = tok["access_token"].split(".")[1]
-    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    return tok
+
+
+def _jwt_claims(jwt: str) -> dict:
+    """Decode a JWT payload WITHOUT verifying the signature - acceptable here, and not in a
+    server. The token just came over TLS from Entra and is being read for a name and an expiry,
+    not to make an access decision. The receiving service verifies it properly on every call."""
+    payload = jwt.split(".")[1]
+    return json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+
+
+def token() -> str:
+    """A valid Dataverse token, refreshed from disk when this process holds none.
+
+    Also decodes it to learn who you are. The UPN stamps every referral row, which is what keeps
+    everyone's results apart - reading it from the token means it cannot be typed wrong or borrowed.
+    """
+    if "tok" in _mem and _mem["exp"] - 120 > time.time():
+        return _mem["tok"]
+    tok = _redeem(DATAVERSE)
+    claims = _jwt_claims(tok["access_token"])
     _mem["tok"], _mem["exp"] = tok["access_token"], claims["exp"]
     _mem["upn"] = claims.get("upn") or claims.get("unique_name") or claims.get("oid", "unknown")
     return _mem["tok"]
+
+
+# The model endpoint's resource. A constant like CLIENT_ID, not config: it names Azure's
+# Cognitive Services API surface and is the same value in every tenant.
+FOUNDRY_RESOURCE = "https://cognitiveservices.azure.com"
+
+
+def foundry_token() -> str:
+    """A model-call token from the SAME sign-in, so nobody hands you a key.
+
+    The refresh token `m3_login.py` cached is redeemed once for Dataverse and once for the model
+    endpoint: your model calls are authorised - and attributable - as you, exactly like your
+    data reads. A real FOUNDRY_KEY in lab/.env overrides this (see `m3_env.foundry`), which is
+    also the route for running the lab against your own tenant.
+    """
+    if "ftok" in _mem and _mem["fexp"] - 120 > time.time():
+        return _mem["ftok"]
+    tok = _redeem(FOUNDRY_RESOURCE)
+    _mem["ftok"], _mem["fexp"] = tok["access_token"], _jwt_claims(tok["access_token"])["exp"]
+    return _mem["ftok"]
 
 
 def whoami() -> str:

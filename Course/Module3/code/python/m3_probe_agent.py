@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from agent_framework import tool                       # noqa: E402
 from agent_framework.openai import OpenAIChatClient     # noqa: E402
 
+import m3_dataverse as dv                               # noqa: E402
 import m3_env                                           # noqa: E402
 
 CALLS = []
@@ -44,9 +45,10 @@ SCHEMA = {
 
 
 def client():
-    """The same client the desk uses, built from `lab/.env` via Module 3's own config reader."""
+    """The same client the desk uses: your sign-in unless a FOUNDRY_KEY overrides it."""
     cfg = m3_env.foundry()
-    return OpenAIChatClient(model=cfg["MODEL_DEPLOYMENT"], api_key=cfg["FOUNDRY_KEY"],
+    return OpenAIChatClient(model=cfg["MODEL_DEPLOYMENT"],
+                            api_key=cfg["FOUNDRY_KEY"] or dv.foundry_token(),
                             base_url=cfg["FOUNDRY_OPENAI_V1"])
 
 
@@ -110,13 +112,14 @@ async def main():
 
 
 if __name__ == "__main__":
-    # Skip, not fail, when the key is missing or still the sample's placeholder. Before the course
-    # that is the normal state of lab/.env, and a red result here would say "broken" about a
-    # machine that is fine. The offline check for this folder is m3_test.py.
-    if (not all(m3_env.setting(n) for n in m3_env.REQUIRED_FOUNDRY)
-            or "<" in m3_env.setting("FOUNDRY_KEY")):
-        print("PROBE SKIPPED - lab/.env has no model key yet, and every check here is a live")
-        print("model call. Paste FOUNDRY_KEY (your instructor gives it out at the start of")
-        print("Module 3) and run it again.")
+    # Skip, not fail, when there is no credential at all: no real FOUNDRY_KEY in lab/.env and no
+    # cached sign-in. Before the course that is the normal state, and a red result here would say
+    # "broken" about a machine that is fine. The offline check for this folder is m3_test.py.
+    have_settings = all(m3_env.setting(n) for n in m3_env.REQUIRED_FOUNDRY)
+    have_key = have_settings and bool(m3_env.foundry()["FOUNDRY_KEY"])
+    if not have_settings or (not have_key and not dv.TOKEN_CACHE.exists()):
+        print("PROBE SKIPPED - no credential yet, and every check here is a live model call.")
+        print("Sign in first (python m3_login.py) and the probe uses that session. A real")
+        print("FOUNDRY_KEY pasted into lab/.env works too, and overrides the sign-in.")
         raise SystemExit(0)
     raise SystemExit(asyncio.run(main()))

@@ -17,5 +17,5 @@ python-dotenv>=1.0,<2
 # so a packaging change upstream cannot quietly break the lab.
 opentelemetry-sdk>=1.39,<2
 azure-monitor-opentelemetry>=1.6,<2
-# Optional (only if demonstrating the built-in evaluators gotcha; the lab uses a custom judge instead):
+# Optional, only if you want to try the SDK's built-in evaluators; the lab uses a custom judge:
 # azure-ai-evaluation==1.18.3

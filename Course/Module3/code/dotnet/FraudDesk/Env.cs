@@ -76,27 +76,33 @@ public static class Env
          Setting("DATAVERSE_ORG", DefaultOrg).TrimEnd('/'));
 
     /// <summary>
-    /// The Foundry endpoint, key and deployment. Throws if any is missing: there is no sensible
-    /// default for a key, and guessing would surface later as an unexplained 401.
+    /// The Foundry endpoint and deployment, plus FOUNDRY_KEY when a real one is set.
+    ///
+    /// The key is OPTIONAL and normally empty: with no key, the desk redeems your Module 3
+    /// sign-in for a model-call token instead (<see cref="Dataverse.FoundryTokenAsync"/>), so
+    /// there is nothing to be handed out and nothing shared. A real value - your own resource's
+    /// key, or a token you minted yourself - overrides that, which is how the lab runs against
+    /// a different tenant. The sample's &lt;placeholder&gt; counts as unset, so an untouched
+    /// lab/.env is keyless.
     /// </summary>
     public static (string endpoint, string key, string model) Foundry()
     {
         var vals = Values();
         if (!_found)
-            throw new Exception("lab/.env not found. It holds the Foundry endpoint and key, and "
+            throw new Exception("lab/.env not found. It holds the Foundry endpoint, and "
                               + "Modules 2 and 3 both read it. Copy lab/.env.sample to lab/.env.");
         if (vals.Count == 0)
             throw new Exception("lab/.env was found but has no settings in it. Copy "
-                              + "lab/.env.sample over it and paste your FOUNDRY_KEY.");
+                              + "lab/.env.sample over it - the sample ships pre-filled.");
 
         // The OpenAI-compatible v1 route. Dated api-version values are rejected by this deployment,
         // which is why the base URL is used directly rather than an Azure-style endpoint.
         var endpoint = vals.GetValueOrDefault("FOUNDRY_OPENAI_V1")
                        ?? throw new Exception("FOUNDRY_OPENAI_V1 missing from lab/.env");
-        var key = vals.GetValueOrDefault("FOUNDRY_KEY")
-                  ?? throw new Exception("FOUNDRY_KEY missing from lab/.env");
         var model = vals.GetValueOrDefault("MODEL_DEPLOYMENT")
                     ?? throw new Exception("MODEL_DEPLOYMENT missing from lab/.env");
+        var key = vals.GetValueOrDefault("FOUNDRY_KEY") ?? "";
+        if (key.Contains('<')) key = "";        // the sample's placeholder counts as unset
         return (endpoint, key, model);
     }
 }

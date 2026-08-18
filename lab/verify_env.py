@@ -15,20 +15,22 @@ import sys
 from pathlib import Path
 
 
-# The FOUNDRY_KEY value that ships in .env.sample. While it is still exactly this, the file has
-# not been filled in yet - which before the course is the NORMAL state, not a mistake: the
-# Codespace creates lab/.env from the sample, and the key is given out at the start of Module 3.
-PLACEHOLDER_KEY = "<ask-your-instructor-or-paste-an-entra-token>"
+# FOUNDRY_KEY values that mean KEYLESS - the sample's placeholder (current and previous wording),
+# or nothing at all. This is the normal, final state: model calls reuse the Module 3 sign-in
+# (python m3_login.py), so there is no key to paste. A real value overrides the sign-in.
+KEYLESS_VALUES = {"",
+                  "<leave-as-is-for-keyless-or-paste-your-own>",
+                  "<ask-your-instructor-or-paste-an-entra-token>"}
 
 
 def check_env_file():
     """Shape-check lab/.env without any network call.
 
-    Returns None when the file does not exist, else `(problems, waiting_for_key)`.
-    `waiting_for_key` is True while FOUNDRY_KEY still holds the untouched sample value.
-    Everything else is checked as usual, catching the mistakes that otherwise surface for
-    the first time on the day: quotes around values, an edited-but-broken placeholder, an
-    endpoint missing /openai/v1/.
+    Returns None when the file does not exist, else `(problems, keyless)`.
+    `keyless` is True while FOUNDRY_KEY is empty or still the sample's placeholder - the
+    normal state, since model calls reuse the Module 3 sign-in. Everything else is checked
+    as usual, catching the mistakes that otherwise surface for the first time on the day:
+    quotes around values, an edited-but-broken placeholder, an endpoint missing /openai/v1/.
     """
     p = Path(__file__).resolve().parent / ".env"
     if not p.exists():
@@ -41,12 +43,12 @@ def check_env_file():
         k, _, v = line.partition("=")
         vals[k.strip()] = v.strip()
     problems = []
-    waiting_for_key = vals.get("FOUNDRY_KEY", "") == PLACEHOLDER_KEY
-    # The three values the labs actually read.
+    keyless = vals.get("FOUNDRY_KEY", "") in KEYLESS_VALUES
+    # The values the labs actually read. FOUNDRY_KEY is optional (keyless is the normal state);
     # FOUNDRY_ENDPOINT also appears in .env.sample but no lab code reads it, so it is not checked.
     for key in ("FOUNDRY_OPENAI_V1", "MODEL_DEPLOYMENT", "FOUNDRY_KEY"):
         v = vals.get(key, "")
-        if key == "FOUNDRY_KEY" and waiting_for_key:
+        if key == "FOUNDRY_KEY" and keyless:
             continue
         if not v:
             problems.append(f"{key} is empty or missing - it should have a value")
@@ -59,12 +61,12 @@ def check_env_file():
     if (v1 and "<" not in v1 and v1[0] not in "\"'" and v1[-1] not in "\"'"
             and not v1.endswith("/openai/v1/")):
         problems.append("FOUNDRY_OPENAI_V1 must end /openai/v1/ - including the final slash")
-    return problems, waiting_for_key
+    return problems, keyless
 
 REQUIRED = [
     ("agent_framework", "agent-framework", "Module 3 - the workflow engine"),
     ("openai", "openai", "Modules 2 and 3 - every model call"),
-    ("azure.identity", "azure-identity", "keyless auth option"),
+    ("azure.identity", "azure-identity", "own-tenant auth option"),
     ("PIL", "pillow", "Module 2 - evidence images"),
     ("opentelemetry.sdk", "opentelemetry-sdk", "Module 2 - observability"),
     ("azure.monitor.opentelemetry", "azure-monitor-opentelemetry", "Module 2 - observability"),
@@ -130,7 +132,7 @@ except Exception as e:                                      # noqa: BLE001
     bad.append("agent-framework-openai")
 
 checked = check_env_file()
-env_problems, waiting_for_key = (None, False) if checked is None else checked
+env_problems, keyless = (None, False) if checked is None else checked
 
 print()
 print("=" * 70)
@@ -154,11 +156,11 @@ if env_problems is None:
     print("  When you reach the .env step of your prep page, create the file with")
     print("      cp lab/.env.sample lab/.env                    (macOS / Linux)")
     print("      Copy-Item lab/.env.sample lab/.env             (Windows PowerShell)")
-    print("  then edit lab/.env and run this check again.")
+    print("  and run this check again - the sample needs no editing.")
     print()
-    print("  Already filled your values in and still seeing this? You probably")
-    print("  edited .env.sample - the near-identical file next door. Open lab/.env")
-    print("  and put your values there.")
+    print("  Did that step and still seeing this? You probably edited .env.sample -")
+    print("  the near-identical file next door - instead of copying it to lab/.env.")
+    print("  Run the copy command above.")
     sys.exit(0)
 
 if env_problems:
@@ -172,22 +174,22 @@ if env_problems:
     print("  anywhere.)")
     sys.exit(1)
 
-if waiting_for_key:
-    # The Codespace and the dev container create lab/.env from the sample, so before the course
-    # this is the state nearly everybody is in. It is the right one, so it exits 0.
-    print("  PACKAGES READY - waiting for the model key")
-    print("=" * 70)
-    print("  Everything is in place except FOUNDRY_KEY, which still holds the")
-    print("  sample's placeholder. That is the right state before the course:")
-    print("  your instructor gives the key out at the start of Module 3. Paste it")
-    print("  over the placeholder then, run this check again, and it will say")
-    print("  ENVIRONMENT READY.")
+if keyless:
+    # The Codespace and the dev container create lab/.env from the sample, and with no key the
+    # labs are KEYLESS - for nearly everybody this is the final state, not a waiting room.
+    print("  Packages installed, and lab/.env needs nothing from you.")
+    print("  Model calls are KEYLESS: they reuse the sign-in from Module 3's first")
+    print("  step (python m3_login.py), the same session that reads the claims book.")
     print()
     print("  Building in your own tenant instead? Your own resource key, or an")
-    print("  Entra token (see lab/.env.sample), goes in the same slot now.")
+    print("  Entra token (see lab/.env.sample), goes in the FOUNDRY_KEY slot and")
+    print("  overrides the sign-in.")
+    print("=" * 70)
+    print("  ENVIRONMENT READY")
     sys.exit(0)
 
-print("  Packages installed, and lab/.env is filled in and well-formed.")
+print("  Packages installed. lab/.env carries a real FOUNDRY_KEY, which overrides")
+print("  the keyless sign-in - model calls will use the key.")
 print("  Next: cd Course/Module3/code/python && python m3_test.py   (offline, no credentials)")
 print("=" * 70)
 print("  ENVIRONMENT READY")

@@ -259,13 +259,19 @@ Reply with JSON only, in this shape:
 """;
 
     /// <summary>
-    /// A chat client for the Foundry deployment, configured from `lab/.env`. The plain OpenAI
-    /// client, NOT the Azure one: gpt-5-mini rejects dated `api-version` values, so the
-    /// OpenAI-compatible `/openai/v1/` route is the one that works.
+    /// A chat client for the Foundry deployment, configured from `lab/.env`. The credential is
+    /// your own sign-in unless a FOUNDRY_KEY is set: the session that reads the book also pays
+    /// for the model calls, so one `dotnet run -- login` covers everything and there is no
+    /// shared key to hand around. The plain OpenAI client, NOT the Azure one: gpt-5-mini rejects
+    /// dated `api-version` values, so the OpenAI-compatible `/openai/v1/` route is the one that
+    /// works - and it sends this credential as a bearer token, which is why a key and an Entra
+    /// token are interchangeable in the same slot.
     /// </summary>
     public static IChatClient ChatClient()
     {
         var (endpoint, key, model) = Env.Foundry();
+        if (string.IsNullOrEmpty(key))
+            key = Dataverse.FoundryTokenAsync().GetAwaiter().GetResult();
         var client = new OpenAIClient(new ApiKeyCredential(key),
                                       new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
         // The ceiling on tool-calling, this SDK's way round. Python caps each tool with
@@ -456,7 +462,7 @@ Reply with JSON only, in this shape:
         /// <summary>
         /// Argue against the traversal, keep what survives, price it in C#, and raise the gate.
         ///
-        /// The traversal reaches nine; six are the ring, three share only a postcode. Unlike
+        /// The traversal casts a wide net, and some of what it catches is coincidence. Unlike
         /// Python, this node also emits the approval REQUEST, because the gate is a separate node -
         /// so the proposal is parked in shared state for a Refer that runs in another process.
         /// </summary>

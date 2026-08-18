@@ -12,11 +12,11 @@ files they tell you to use.
 
 1. `cp lab/.env.sample lab/.env` — in a Codespace or dev container this has already been done
    for you, along with the dependency install.
-2. Only **`FOUNDRY_KEY`** needs a value, and your instructor gives it out **at the start of
-   Module 3** — everything else ships pre-filled. Paste it over the placeholder, with no
-   quotation marks around it.
-3. `python lab/verify_env.py` — before you have the key it says `PACKAGES READY`, which is the
-   right answer; after you paste it, `ENVIRONMENT READY`.
+2. **There is no key to paste.** Everything ships pre-filled, and model calls are keyless: they
+   reuse the sign-in from Module 3's first step (`python m3_login.py`), the same session that
+   reads the claims book. Running the lab in your own tenant instead? `lab/.env.sample` shows
+   what to put in `FOUNDRY_KEY` to override the sign-in.
+3. `python lab/verify_env.py` — it should end `ENVIRONMENT READY`.
 
 ## What is here
 

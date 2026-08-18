@@ -7,7 +7,7 @@ name: Verify lab environment
 # import. Installing on Linux here is the check that catches that before anyone hits it.
 #
 # No credentials, no model calls, no cost: m3_test.py is entirely offline, and m3_probe_agent.py
-# skips itself (exit 0) when lab/.env holds no key - which in CI is always.
+# skips itself (exit 0) when there is no key and no cached sign-in - which in CI is always.
 
 on:
   push:
@@ -65,14 +65,17 @@ jobs:
               assert f'{key}=' in sample, f'{key} should ship pre-filled in .env.sample'
               assert f'Fill in {key}' not in post, \
                   f'postCreate.sh still asks the attendee to fill in {key}'
-          assert 'FOUNDRY_KEY' in post, 'postCreate.sh should still name the one value they paste'
-          assert 'FOUNDRY_KEY' in readme, 'README should name the one value they paste'
-          # The key is given out at the start of Module 3, never emailed. This phrase is how the
-          # story drifted once already.
+          # The lab is KEYLESS by default: model calls reuse the Module 3 sign-in, and nothing
+          # is handed out. Each surface must say so, and none may resurrect the handed-out-key
+          # story - that is how the setup prose drifted once already.
           for name, text in (('README.md', readme), ('postCreate.sh', post),
                              ('.env.sample', sample)):
+              assert 'keyless' in text.lower(), \
+                  f'{name} should say the lab is keyless by default'
+              assert 'gives it out' not in text and 'gives out' not in text, \
+                  f'{name} says a key is handed out on the day; the lab is keyless'
               assert 'joining email' not in text, \
-                  f'{name} says a Foundry value comes by email; it is given out on the day'
+                  f'{name} says a Foundry value comes by email; nothing does'
           print('setup instructions agree with .env.sample')
           EOF
 
