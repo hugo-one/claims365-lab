@@ -186,7 +186,10 @@ public static partial class Desk
     /// second argument matters: without it each tool is named after its C# method.
     ///
     /// UNLIKE PYTHON, THERE IS NO PER-TOOL CALL CEILING HERE - `AIFunctionFactory` has no
-    /// equivalent of `max_invocations`, so the bound is the instruction alone.
+    /// equivalent of `max_invocations`. The enforced bound lives in `ChatClient()` instead: the
+    /// function-invocation pipeline caps iterations per request at 8. (A workflow-level cap like
+    /// Python's `max_iterations` is not reachable in 1.17.0 - `InProcessExecutionOptions` is
+    /// internal - so that half is documented rather than attempted.)
     /// </summary>
     public static IList<AITool> LinkTools() => new List<AITool>
     {
@@ -265,7 +268,14 @@ Reply with JSON only, in this shape:
         var (endpoint, key, model) = Env.Foundry();
         var client = new OpenAIClient(new ApiKeyCredential(key),
                                       new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
-        return client.GetChatClient(model).AsIChatClient();
+        // The ceiling on tool-calling, this SDK's way round. Python caps each tool with
+        // `max_invocations`; this SDK has no per-tool cap, so the function-invocation pipeline
+        // caps ITERATIONS per request instead - enough for a three-hop investigation plus
+        // headroom, and an agent that tried to enumerate the whole book would be cut off.
+        return client.GetChatClient(model).AsIChatClient()
+            .AsBuilder()
+            .UseFunctionInvocation(configure: f => f.MaximumIterationsPerRequest = 8)
+            .Build();
     }
 
     /// <summary>

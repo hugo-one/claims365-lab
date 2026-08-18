@@ -10,6 +10,7 @@ promise - and sampling model runs could never establish it.
 """
 import inspect
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -103,9 +104,13 @@ check("Refer only yields inside its response handler, i.e. after a human answere
 check("the desk asks for a decision before it can finish", "request_info" in src["Refer"])
 
 # The runner refuses to act without a name: a referral raised by "unnamed" would defeat the point
-# of having a human gate at all.
-runner = (Path(__file__).resolve().parent / "m3_run.py").read_text(encoding="utf-8")
-check("approve and decline both require --by", "--by is required for" in runner)
+# of having a human gate at all. Run it for real, in a child process, rather than grepping the
+# source for the error message - the guard exits before any sign-in or model call, so this is free.
+guard = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "m3_run.py"),
+                        "approve"], capture_output=True, text=True, timeout=120)
+check("approve without --by is refused, in a real process",
+      guard.returncode != 0 and "named human" in (guard.stderr + guard.stdout),
+      f"rc={guard.returncode} out={((guard.stderr + guard.stdout)[:80])!r}")
 
 print("\n=== the module is self-contained ===")
 
@@ -141,8 +146,13 @@ for node, schema in (("Investigate", "TRAVERSAL_SCHEMA"), ("Challenge", "JUDGEME
           "response_format" in src[node] and schema in src[node])
 
 print("\n=== the money ===")
+# Prove the arithmetic, not the source text: the pricing function is pure, so it can be run
+# against fixture rows right here, with no Dataverse and no model.
+fixture = [{"cp_bookclaimref": "BCL-TEST-1", "cp_amountclaimed": "3100"},
+           {"cp_bookclaimref": "BCL-TEST-2", "cp_amountclaimed": 2500.5}]
+refs, total = fd.price_confirmed(fixture)
 check("exposure is summed in Python from claim rows, not returned by a model",
-      "exposure +=" in src["Challenge"] and "float(row[" in src["Challenge"])
+      refs == ["BCL-TEST-1", "BCL-TEST-2"] and total == 5600.5, f"got {refs}, {total}")
 check("no schema lets a model return an amount",
       "amount" not in str(fd.JUDGEMENT_SCHEMA) and "exposure" not in str(fd.TRAVERSAL_SCHEMA))
 

@@ -375,6 +375,17 @@ class Investigate(Executor):
                                                  narrative=out["narrative"]))
 
 
+def price_confirmed(rows) -> tuple[list[str], float]:
+    """The money, computed from claim rows the model never wrote.
+
+    Pure and separate so the test suite can prove the arithmetic against fixture rows, rather
+    than merely checking that a line of source mentions a sum. The model decides WHO is
+    confirmed; every figure a human sees comes out of this function, over rows that exist.
+    """
+    refs = [r["cp_bookclaimref"] for r in rows]
+    return refs, sum(float(r["cp_amountclaimed"]) for r in rows)
+
+
 # --------------------------------------------------------------------------- 3. challenge
 class Challenge(Executor):
     """The adversarial half. Recall going up is not the same as being right."""
@@ -406,11 +417,10 @@ class Challenge(Executor):
                                    strength="weak") for c in out["excluded"]]
 
         # THE MONEY IS COMPUTED HERE, FROM THE RECORDS. The model decides WHO, never HOW MUCH.
-        claim_refs, exposure = [], 0.0
-        for c in confirmed:
-            for row in dv.claims_of(c.claimant_ref):
-                claim_refs.append(row["cp_bookclaimref"])
-                exposure += float(row["cp_amountclaimed"])
+        # One batched read for the whole confirmed set: this module's own lesson is that cost
+        # lives in round trips, so the desk practises it at the data layer too, as Desk.cs does.
+        rows = dv.claims_of_many([c.claimant_ref for c in confirmed])
+        claim_refs, exposure = price_confirmed(rows)
 
         print(f"[challenge]   confirmed {len(confirmed)}, excluded {len(excluded)}"
               f"  -> refer={out['recommend_refer']}")
@@ -507,14 +517,14 @@ class Refer(Executor):
                           claim_count=len(p.claim_refs), exposure=p.exposure_gbp, hops=p.hops,
                           approved_by=decision.approver, evidence=evidence,
                           language=LANGUAGE, run_id=run_id)
-        by_claimant = {c.claimant_ref: c for c in p.confirmed}
-        for c in p.confirmed:
-            for row in dv.claims_of(c.claimant_ref):
-                dv.write_referral_claim(referral_ref=referral_ref,
-                                        claim_ref=row["cp_bookclaimref"],
-                                        claimant_ref=c.claimant_ref,
-                                        reason=by_claimant[c.claimant_ref].reason,
-                                        strength=c.strength)
+        judged = {c.claimant_ref: c for c in p.confirmed}
+        for row in dv.claims_of_many(list(judged)):
+            j = judged[row["cp_claimantref"]]
+            dv.write_referral_claim(referral_ref=referral_ref,
+                                    claim_ref=row["cp_bookclaimref"],
+                                    claimant_ref=row["cp_claimantref"],
+                                    reason=j.reason,
+                                    strength=j.strength)
         print(f"[refer]       {outcome.upper()} by {decision.approver or 'unknown'}")
         print(f"[refer]       written to Dataverse as {referral_ref}")
 
