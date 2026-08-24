@@ -10,12 +10,6 @@ namespace FraudDesk;
 
 public static class Env
 {
-    // The course defaults. Not secrets: a tenant id names a directory and an org URL a database,
-    // and neither grants anything on its own. Defaults rather than constants, so pointing the lab
-    // at another environment is a config change instead of a source edit.
-    public const string DefaultTenant = "30d4eca5-0b84-4868-89d5-b0fc78c105c4";
-    public const string DefaultOrg = "https://org3425656b.crm4.dynamics.com";
-
     static Dictionary<string, string>? _cache;
     static bool _found;                     // was a file located at all, as opposed to an empty one
 
@@ -60,20 +54,42 @@ public static class Env
     {
         var fromProcess = Environment.GetEnvironmentVariable(name);
         if (!string.IsNullOrWhiteSpace(fromProcess)) return fromProcess;
-        return Values().TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v)
+        var value = Values().TryGetValue(name, out var v) && !string.IsNullOrWhiteSpace(v)
             ? v : fallback;
+        // A value still wrapped in <angle brackets> is the sample's placeholder: treat it as
+        // UNSET, the convention Foundry() has always used for FOUNDRY_KEY. Half-editing the
+        // file is the common mistake, and this is what turns it into a named error.
+        return value.Contains('<') && value.Contains('>') ? "" : value;
     }
 
     /// <summary>
-    /// Which tenant you sign in to, and which environment you read. Never throws: both have a
-    /// working default, so `dotnet run -- login` works before you have pasted a Foundry key.
+    /// Which tenant you sign in to, and which environment you read.
+    ///
+    /// THROWS on purpose when either is still the sample's placeholder. There is no sensible
+    /// default for "which directory am I": guessing one signs you in to a tenant you are not a
+    /// member of, and Entra's answer (AADSTS50020) names the tenant rather than the setting, so
+    /// the mistake reads as a broken lab rather than an unedited config file.
     ///
     /// The trailing slash is trimmed - a pasted URL often carries one, and
     /// <c>{org}//api/data/v9.2</c> 404s without mentioning it.
     /// </summary>
-    public static (string tenant, string org) DataverseTarget() =>
-        (Setting("DATAVERSE_TENANT", DefaultTenant),
-         Setting("DATAVERSE_ORG", DefaultOrg).TrimEnd('/'));
+    public static (string tenant, string org) DataverseTarget()
+    {
+        var tenant = Setting("DATAVERSE_TENANT", "");
+        var org = Setting("DATAVERSE_ORG", "");
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(tenant)) missing.Add("DATAVERSE_TENANT");
+        if (string.IsNullOrWhiteSpace(org)) missing.Add("DATAVERSE_ORG");
+        if (missing.Count > 0)
+            throw new Exception(
+                "lab/.env still has the sample's <placeholder> for "
+                + string.Join(", ", missing) + ".\n"
+                + "  Put your own tenant id and Dataverse org URL there, angle brackets removed.\n"
+                + "  The tenant id is on the Entra ID overview page; the org URL is your\n"
+                + "  environment's, ending .crm<n>.dynamics.com.\n"
+                + "  The setup guide in your course materials has both: section 1, and section 6 step 3.");
+        return (tenant, org.TrimEnd('/'));
+    }
 
     /// <summary>
     /// The Foundry endpoint and deployment, plus FOUNDRY_KEY when a real one is set.
@@ -93,7 +109,8 @@ public static class Env
                               + "Modules 2 and 3 both read it. Copy lab/.env.sample to lab/.env.");
         if (vals.Count == 0)
             throw new Exception("lab/.env was found but has no settings in it. Copy "
-                              + "lab/.env.sample over it - the sample ships pre-filled.");
+                              + "lab/.env.sample over it, then replace the <placeholders> with "
+                              + "your own values.");
 
         // The OpenAI-compatible v1 route. Dated api-version values are rejected by this deployment,
         // which is why the base URL is used directly rather than an Azure-style endpoint.

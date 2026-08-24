@@ -32,8 +32,41 @@ import m3_env
 # CLIENT_ID does not: it is the Azure CLI public client, a constant every tenant shares.
 CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"        # Azure CLI public client
 
-TENANT, DATAVERSE = m3_env.dataverse_target()
-API = f"{DATAVERSE}/api/data/v9.2"
+_target: tuple[str, str] | None = None
+
+
+def target() -> tuple[str, str]:
+    """`(tenant, org)`, resolved on FIRST USE rather than at import.
+
+    Deliberately lazy. `m3_test.py` imports this module and never touches Dataverse - it is the
+    offline suite the README tells you to run before anything else - so an unedited `lab/.env`
+    must not stop it. The error still arrives, loudly and by name, the moment something actually
+    needs a directory to sign in to.
+    """
+    global _target
+    if _target is None:
+        _target = m3_env.dataverse_target()
+    return _target
+
+
+def api() -> str:
+    """The Web API base for the configured org."""
+    return f"{target()[1]}/api/data/v9.2"
+
+
+def __getattr__(name: str):
+    """`TENANT`, `DATAVERSE` and `API` as module attributes, for `dv.DATAVERSE` and friends.
+
+    Module-level __getattr__ (PEP 562) is consulted only for attribute access on the module, so
+    code INSIDE this file calls target() / api() directly.
+    """
+    if name == "TENANT":
+        return target()[0]
+    if name == "DATAVERSE":
+        return target()[1]
+    if name == "API":
+        return api()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # Beside this file rather than in a home directory, so deleting the repo deletes the session.
 TOKEN_CACHE = Path(__file__).resolve().parent / ".m3_token.json"
@@ -82,8 +115,8 @@ def device_login() -> str:
     every later command non-interactive.
     """
     s, dc = _post_form(
-        f"https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/devicecode",
-        {"client_id": CLIENT_ID, "scope": f"{DATAVERSE}/.default offline_access"})
+        f"https://login.microsoftonline.com/{target()[0]}/oauth2/v2.0/devicecode",
+        {"client_id": CLIENT_ID, "scope": f"{target()[1]}/.default offline_access"})
     if "user_code" not in dc:
         raise SystemExit("could not start sign-in: " + json.dumps(dc)[:300])
     print("=" * 72)
@@ -99,7 +132,7 @@ def device_login() -> str:
     while time.time() < deadline:
         time.sleep(int(dc.get("interval", 5)))
         s, tok = _post_form(
-            f"https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/token",
+            f"https://login.microsoftonline.com/{target()[0]}/oauth2/v2.0/token",
             {"grant_type": "urn:ietf:params:oauth:grant-type:device_code",
              "client_id": CLIENT_ID, "device_code": dc["device_code"]})
         if s == 200:
@@ -122,7 +155,7 @@ def _redeem(resource: str) -> dict:
         raise SystemExit("not signed in. run:  python m3_login.py")
     rt = json.loads(TOKEN_CACHE.read_text(encoding="utf-8"))["refresh_token"]
     s, tok = _post_form(
-        f"https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/token",
+        f"https://login.microsoftonline.com/{target()[0]}/oauth2/v2.0/token",
         {"grant_type": "refresh_token", "client_id": CLIENT_ID, "refresh_token": rt,
          "scope": f"{resource}/.default offline_access"})
     if s != 200:
@@ -150,7 +183,7 @@ def token() -> str:
     """
     if "tok" in _mem and _mem["exp"] - 120 > time.time():
         return _mem["tok"]
-    tok = _redeem(DATAVERSE)
+    tok = _redeem(target()[1])
     claims = _jwt_claims(tok["access_token"])
     _mem["tok"], _mem["exp"] = tok["access_token"], claims["exp"]
     _mem["upn"] = claims.get("upn") or claims.get("unique_name") or claims.get("oid", "unknown")
@@ -194,7 +227,7 @@ def _req(method: str, path: str, body=None):
         # parameter separator, never data.
         base, q = path.split("?", 1)
         path = base + "?" + urllib.parse.quote(q, safe="$&=(),'/*%")
-    req = urllib.request.Request(f"{API}/{path}",
+    req = urllib.request.Request(f"{api()}/{path}",
                                  data=json.dumps(body).encode() if body is not None else None,
                                  method=method)
     req.add_header("Authorization", f"Bearer {token()}")

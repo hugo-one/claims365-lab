@@ -20,7 +20,11 @@ public static class Dataverse
 {
     // Tenant and org come from `lab/.env` (see Env.cs) because they are environment-specific.
     // ClientId does not: it is the Azure CLI public client, a constant every tenant shares.
-    static readonly (string Tenant, string Org) Target = Env.DataverseTarget();
+    // Resolved on FIRST USE, not in a static initialiser: the offline paths touch this class
+    // without ever calling Dataverse, and an unedited lab/.env must not stop them. The error
+    // still arrives by name the moment something needs a directory to sign in to.
+    static (string Tenant, string Org)? _target;
+    static (string Tenant, string Org) Target => _target ??= Env.DataverseTarget();
     static string Tenant => Target.Tenant;
     public static string Org => Target.Org;
     const string ClientId = "04b07795-8ddb-461a-bbee-02f9e1bf7b46";   // Azure CLI public client

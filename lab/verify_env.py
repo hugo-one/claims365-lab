@@ -46,7 +46,12 @@ def check_env_file():
     keyless = vals.get("FOUNDRY_KEY", "") in KEYLESS_VALUES
     # The values the labs actually read. FOUNDRY_KEY is optional (keyless is the normal state);
     # FOUNDRY_ENDPOINT also appears in .env.sample but no lab code reads it, so it is not checked.
-    for key in ("FOUNDRY_OPENAI_V1", "MODEL_DEPLOYMENT", "FOUNDRY_KEY"):
+    # Everything else must be YOUR value - the sample ships <placeholders>, not defaults.
+    # DATAVERSE_TENANT and DATAVERSE_ORG are checked too: m3_env.dataverse_target() refuses to
+    # guess them, so a file that still holds their placeholders fails at Module 3's first
+    # command. Catching it here means the reader learns it from the environment check instead.
+    for key in ("FOUNDRY_OPENAI_V1", "MODEL_DEPLOYMENT", "FOUNDRY_KEY",
+                "DATAVERSE_TENANT", "DATAVERSE_ORG"):
         v = vals.get(key, "")
         if key == "FOUNDRY_KEY" and keyless:
             continue

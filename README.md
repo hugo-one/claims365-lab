@@ -10,12 +10,17 @@ files they tell you to use.
 
 ## Setup
 
-1. `cp lab/.env.sample lab/.env` — in a Codespace or dev container this has already been done
-   for you, along with the dependency install.
-2. **There is no key to paste.** Everything ships pre-filled, and model calls are keyless: they
-   reuse the sign-in from Module 3's first step (`python m3_login.py`), the same session that
-   reads the claims book. Running the lab in your own tenant instead? `lab/.env.sample` shows
-   what to put in `FOUNDRY_KEY` to override the sign-in.
+1. `cp lab/.env.sample lab/.env` — in a Codespace or dev container the copy and the dependency
+   install have already been done for you. You still have to do step 2.
+2. **Edit `lab/.env`: four values are `<placeholders>` and the lab will not start until you
+   replace them** — `FOUNDRY_ENDPOINT`, `FOUNDRY_OPENAI_V1`, `DATAVERSE_TENANT` and
+   `DATAVERSE_ORG`. The file says where each comes from, and so does *Set up your own tenant*
+   in your course materials. Nothing guesses on your behalf: a half-edited file stops with the
+   line named, rather than signing you in to a directory you are not a member of.
+
+   **There is still no key to paste.** Model calls are keyless — they reuse the sign-in from
+   Module 3's first step (`python m3_login.py`), the same session that reads the claims book.
+   Leave `FOUNDRY_KEY` exactly as it is unless you want to override that.
 3. `python lab/verify_env.py` — it should end `ENVIRONMENT READY`.
 
 ## What is here
@@ -25,7 +30,7 @@ files they tell you to use.
 | `lab/` | Pinned requirements, `.env.sample`, and `verify_env.py` |
 | `Course/Module3/code/python/` and `.../dotnet/` | **Module 3**, Microsoft Agent Framework: the workflow, the CLI and the tests, in Python and C#. The only code you run |
 | `Course/Module2/evidence/` | **Module 2**: the damage photographs and repair quotes you attach in the browser. The photographs are real and openly licensed — attribution in `CREDITS.md`, which must stay with them |
-| `Course/Module2/code/claim_assessment.schema.json` | **Module 2**: the response schema you paste into your agent. Your instructor also puts it in the session chat |
+| `Course/Module2/code/claim_assessment.schema.json` | **Module 2**: the response schema you paste into your agent. The same file ships in the tenant setup pack |
 | `.devcontainer/` | The Codespace definition |
 
 **Module 1** is browser only and needs nothing from here.

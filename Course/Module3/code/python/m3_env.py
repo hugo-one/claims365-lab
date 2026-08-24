@@ -2,17 +2,17 @@
 
 DEMONSTRATION CODE - part of the Claims 365 training lab, written to be read rather than deployed.
 
-Nothing here needs filling in. The endpoint, model, tenant and Dataverse org say *where* things
-live and grant nothing on their own, so they ship pre-filled - and model calls are keyless by
-default, paid for by the same sign-in that reads the claims book. `FOUNDRY_KEY` is an optional
-override; see `foundry()`.
+The endpoint, tenant and Dataverse org say *where* things live and grant nothing on their own,
+but they are yours to supply: `lab/.env.sample` ships them as <placeholders>, and every reader
+below treats an unreplaced placeholder as MISSING. That is deliberate. A default that silently
+stood in for one of them would sign you in to a directory you are not a member of, and the only
+symptom is an authentication error that names nothing.
+
+Model calls are keyless by default, paid for by the same sign-in that reads the claims book.
+`FOUNDRY_KEY` is an optional override; see `foundry()`.
 """
 import os
 from pathlib import Path
-
-# The course environment. Defaults, so the lab works before you edit anything.
-DEFAULT_TENANT = "30d4eca5-0b84-4868-89d5-b0fc78c105c4"
-DEFAULT_ORG = "https://org3425656b.crm4.dynamics.com"
 
 _cache: dict | None = None
 
@@ -40,18 +40,37 @@ def lab_env() -> dict:
 
 
 def setting(name: str, default: str = "") -> str:
-    """Process environment first, then `lab/.env`, then the default."""
-    return os.environ.get(name) or lab_env().get(name) or default
+    """Process environment first, then `lab/.env`, then the default.
+
+    A value still wrapped in <angle brackets> is the sample's placeholder and counts as UNSET,
+    the same convention `foundry()` has always used for `FOUNDRY_KEY`. Half-editing the file is
+    the common mistake, and this is what turns it into an error that names the line.
+    """
+    value = os.environ.get(name) or lab_env().get(name) or default
+    return "" if "<" in value and ">" in value else value
 
 
 def dataverse_target() -> tuple[str, str]:
-    """`(tenant, org)`. Never raises, because both have a working default.
+    """`(tenant, org)`, or exit naming whichever is still a placeholder.
 
-    The trailing slash is stripped: a pasted URL often carries one, and `{org}//api/data/v9.2`
-    404s without mentioning the extra slash.
+    RAISES on purpose. There is no sensible default for "which directory am I": guessing
+    one signs you in to a tenant you are not a member of, and Entra's answer
+    (AADSTS50020) names the tenant rather than the setting, so the mistake reads as a
+    broken lab rather than an unedited config file.
+
+    The trailing slash is stripped: a pasted URL often carries one, and
+    `{org}//api/data/v9.2` 404s without mentioning the extra slash.
     """
-    return setting("DATAVERSE_TENANT", DEFAULT_TENANT), \
-        setting("DATAVERSE_ORG", DEFAULT_ORG).rstrip("/")
+    tenant, org = setting("DATAVERSE_TENANT"), setting("DATAVERSE_ORG")
+    missing = [n for n, v in (("DATAVERSE_TENANT", tenant), ("DATAVERSE_ORG", org)) if not v]
+    if missing:
+        raise SystemExit(
+            "lab/.env still has the sample's <placeholder> for " + ", ".join(missing) + ".\n"
+            "  Put your own tenant id and Dataverse org URL there, angle brackets removed.\n"
+            "  The tenant id is on the Entra ID overview page; the org URL is your\n"
+            "  environment's, ending .crm<n>.dynamics.com.\n"
+            "  The setup guide in your course materials has both: section 1, and section 6 step 3.")
+    return tenant, org.rstrip("/")
 
 
 REQUIRED_FOUNDRY = ("FOUNDRY_OPENAI_V1", "MODEL_DEPLOYMENT")
@@ -69,9 +88,10 @@ def foundry() -> dict:
     missing = [n for n in REQUIRED_FOUNDRY if not setting(n)]
     if missing:
         raise SystemExit(
-            "lab/.env is missing " + ", ".join(missing) + ".\n"
+            "lab/.env is missing, or still holds a <placeholder> for, " + ", ".join(missing) + ".\n"
             "  From the repository root:  cp lab/.env.sample lab/.env\n"
-            "  The sample ships with everything pre-filled for the course environment.")
+            "  Then replace the placeholders with your own Foundry account and deployment -\n"
+            "  the setup guide in your course materials, section 5, says where they come from.")
     key = setting("FOUNDRY_KEY")
     if "<" in key:
         key = ""
